@@ -149,7 +149,7 @@ Possible values:
 - Any positive integer.
 - 0 (disable deduplication)
 
-Default value: 100.
+Default value: 1000.
 
 The `Insert` command creates one or more blocks (parts). For [insert deduplication](../../engines/table-engines/mergetree-family/replication.md), when writing into replicated tables, ClickHouse writes the hash sums of the created parts into ClickHouse Keeper. Hash sums are stored only for the most recent `replicated_deduplication_window` blocks. The oldest hash sums are removed from ClickHouse Keeper.
 A large number of `replicated_deduplication_window` slows down `Inserts` because it needs to compare more entries.
@@ -867,3 +867,31 @@ Default value: `Never`
 Persists virtual column `_block_number` on merges.
 
 Default value: false.
+
+## exclude_deleted_rows_for_part_size_in_merge {#exclude_deleted_rows_for_part_size_in_merge}
+
+If enabled, estimated actual size of data parts (i.e., excluding those rows that have been deleted through `DELETE FROM`) will be used when selecting parts to merge. Note that this behavior is only triggered for data parts affected by `DELETE FROM` executed after this setting is enabled.
+
+Possible values:
+
+- true, false
+
+Default value: false
+
+**See Also**
+
+- [load_existing_rows_count_for_old_parts](#load_existing_rows_count_for_old_parts) setting
+
+## load_existing_rows_count_for_old_parts {#load_existing_rows_count_for_old_parts}
+
+If enabled along with [exclude_deleted_rows_for_part_size_in_merge](#exclude_deleted_rows_for_part_size_in_merge), deleted rows count for existing data parts will be calculated during table starting up. Note that it may slow down start up table loading.
+
+Possible values:
+
+- true, false
+
+Default value: false
+
+**See Also**
+
+- [exclude_deleted_rows_for_part_size_in_merge](#exclude_deleted_rows_for_part_size_in_merge) setting

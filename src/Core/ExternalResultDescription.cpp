@@ -10,7 +10,9 @@
 #include <DataTypes/DataTypesDecimal.h>
 #include <DataTypes/DataTypesNumber.h>
 #include <DataTypes/DataTypeEnum.h>
+#include <DataTypes/DataTypeCustomGeo.h>
 #include <Common/typeid_cast.h>
+#include <Common/logger_useful.h>
 
 
 namespace DB
@@ -18,6 +20,11 @@ namespace DB
 namespace ErrorCodes
 {
     extern const int UNKNOWN_TYPE;
+}
+
+ExternalResultDescription::ExternalResultDescription(const Block & sample_block_)
+{
+    init(sample_block_);
 }
 
 void ExternalResultDescription::init(const Block & sample_block_)
@@ -38,9 +45,14 @@ void ExternalResultDescription::init(const Block & sample_block_)
 
 ExternalResultDescription::TypeWithNullable ExternalResultDescription::getValueTypeWithNullable(const DataTypePtr & input_type)
 {
-    bool is_nullable = input_type->isNullable();
-    DataTypePtr type_not_nullable = removeNullable(input_type);
-    const IDataType * type = type_not_nullable.get();
+        bool is_nullable = input_type->isNullable();
+        DataTypePtr type_not_nullable = removeNullable(input_type);
+        const IDataType * type = type_not_nullable.get();
+
+        if (dynamic_cast<const DataTypePointName *>(type->getCustomName()))
+        {
+            return {ValueType::vtPoint, is_nullable};
+        }
 
     WhichDataType which(type);
 

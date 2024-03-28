@@ -92,10 +92,10 @@ PipeFDs signal_pipe;
 static void call_default_signal_handler(int sig)
 {
     if (SIG_ERR == signal(sig, SIG_DFL))
-        throwFromErrno("Cannot set signal handler.", ErrorCodes::CANNOT_SET_SIGNAL_HANDLER);
+        throw ErrnoException(ErrorCodes::CANNOT_SET_SIGNAL_HANDLER, "Cannot set signal handler");
 
     if (0 != raise(sig))
-        throwFromErrno("Cannot send signal.", ErrorCodes::CANNOT_SEND_SIGNAL);
+        throw ErrnoException(ErrorCodes::CANNOT_SEND_SIGNAL, "Cannot send signal");
 }
 
 static const size_t signal_pipe_buf_size =
@@ -210,7 +210,7 @@ public:
     static constexpr int SanitizerTrap = -3;
 
     explicit SignalListener(BaseDaemon & daemon_)
-        : log(&Poco::Logger::get("BaseDaemon"))
+        : log(getLogger("BaseDaemon"))
         , daemon(daemon_)
     {
     }
@@ -275,19 +275,30 @@ public:
                 }
 
                 readPODBinary(stack_trace, in);
-                readVectorBinary(thread_frame_pointers, in);
+
+                if (sig != SanitizerTrap)
+                    readVectorBinary(thread_frame_pointers, in);
+
                 readBinary(thread_num, in);
                 readPODBinary(thread_ptr, in);
 
                 /// This allows to receive more signals if failure happens inside onFault function.
                 /// Example: segfault while symbolizing stack trace.
-                std::thread([=, this] { onFault(sig, info, context, stack_trace, thread_frame_pointers, thread_num, thread_ptr); }).detach();
+                try
+                {
+                    std::thread([=, this] { onFault(sig, info, context, stack_trace, thread_frame_pointers, thread_num, thread_ptr); }).detach();
+                }
+                catch (...)
+                {
+                    /// Likely cannot allocate thread
+                    onFault(sig, info, context, stack_trace, thread_frame_pointers, thread_num, thread_ptr);
+                }
             }
         }
     }
 
 private:
-    Poco::Logger * log;
+    LoggerPtr log;
     BaseDaemon & daemon;
 
     void onTerminate(std::string_view message, UInt32 thread_num) const
@@ -534,6 +545,16 @@ private:
 
 
 #if defined(SANITIZER)
+
+template <typename T>
+struct ValueHolder
+{
+    ValueHolder(T value_) : value(value_)
+    {}
+
+    T value;
+};
+
 extern "C" void __sanitizer_set_death_callback(void (*)());
 
 /// Sanitizers may not expect some function calls from death callback.
@@ -551,10 +572,13 @@ static DISABLE_SANITIZER_INSTRUMENTATION void sanitizerDeathCallback()
 
     const StackTrace stack_trace;
 
-    int sig = SignalListener::SanitizerTrap;
-    writeBinary(sig, out);
+    writeBinary(SignalListener::SanitizerTrap, out);
     writePODBinary(stack_trace, out);
-    writeBinary(UInt32(getThreadId()), out);
+    /// We create a dummy struct with a constructor so DISABLE_SANITIZER_INSTRUMENTATION is not applied to it
+    /// otherwise, Memory sanitizer can't know that values initiialized inside this function are actually initialized
+    /// because instrumentations are disabled leading to false positives later on
+    ValueHolder<UInt32> thread_id{static_cast<UInt32>(getThreadId())};
+    writeBinary(thread_id.value, out);
     writePODBinary(current_thread, out);
 
     out.next();
@@ -659,7 +683,17 @@ BaseDaemon::~BaseDaemon()
     /// Reset signals to SIG_DFL to avoid trying to write to the signal_pipe that will be closed after.
     for (int sig : handled_signals)
         if (SIG_ERR == signal(sig, SIG_DFL))
-            throwFromErrno("Cannot set signal handler.", ErrorCodes::CANNOT_SET_SIGNAL_HANDLER);
+        {
+            try
+            {
+                throw ErrnoException(ErrorCodes::CANNOT_SET_SIGNAL_HANDLER, "Cannot set signal handler");
+            }
+            catch (ErrnoException &)
+            {
+                tryLogCurrentException(__PRETTY_FUNCTION__);
+            }
+        }
+
     signal_pipe.close();
 }
 
@@ -1129,7 +1163,7 @@ void BaseDaemon::setupWatchdog()
         pid = fork();
 
         if (-1 == pid)
-            throwFromErrno("Cannot fork", ErrorCodes::SYSTEM_ERROR);
+            throw ErrnoException(ErrorCodes::SYSTEM_ERROR, "Cannot fork");
 
         if (0 == pid)
         {
@@ -1225,7 +1259,7 @@ void BaseDaemon::setupWatchdog()
                 if (SIG_ERR == signal(sig, SIG_IGN))
                 {
                     char * signal_description = strsignal(sig); // NOLINT(concurrency-mt-unsafe)
-                    throwFromErrno(fmt::format("Cannot ignore {}", signal_description), ErrorCodes::SYSTEM_ERROR);
+                    throw ErrnoException(ErrorCodes::SYSTEM_ERROR, "Cannot ignore {}", signal_description);
                 }
             }
         }
@@ -1315,7 +1349,7 @@ void systemdNotify(const std::string_view & command)
     int s = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
 
     if (s == -1)
-        throwFromErrno("Can't create UNIX socket for systemd notify.", ErrorCodes::SYSTEM_ERROR);
+        throw ErrnoException(ErrorCodes::SYSTEM_ERROR, "Can't create UNIX socket for systemd notify");
 
     SCOPE_EXIT({ close(s); });
 
@@ -1351,7 +1385,7 @@ void systemdNotify(const std::string_view & command)
             if (errno == EINTR)
                 continue;
             else
-                throwFromErrno("Failed to notify systemd, sendto returned error.", ErrorCodes::SYSTEM_ERROR);
+                throw ErrnoException(ErrorCodes::SYSTEM_ERROR, "Failed to notify systemd, sendto returned error");
         }
         else
             sent_bytes_total += sent_bytes;

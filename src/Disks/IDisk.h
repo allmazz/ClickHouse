@@ -194,7 +194,13 @@ public:
     virtual void replaceFile(const String & from_path, const String & to_path) = 0;
 
     /// Recursively copy files from from_dir to to_dir. Create to_dir if not exists.
-    virtual void copyDirectoryContent(const String & from_dir, const std::shared_ptr<IDisk> & to_disk, const String & to_dir, const ReadSettings & read_settings, const WriteSettings & write_settings);
+    virtual void copyDirectoryContent(
+        const String & from_dir,
+        const std::shared_ptr<IDisk> & to_disk,
+        const String & to_dir,
+        const ReadSettings & read_settings,
+        const WriteSettings & write_settings,
+        const std::function<void()> & cancellation_hook);
 
     /// Copy file `from_file_path` to `to_file_path` located at `to_disk`.
     virtual void copyFile( /// NOLINT
@@ -202,7 +208,8 @@ public:
         IDisk & to_disk,
         const String & to_file_path,
         const ReadSettings & read_settings = {},
-        const WriteSettings & write_settings = {});
+        const WriteSettings & write_settings = {},
+        const std::function<void()> & cancellation_hook = {});
 
     /// List files at `path` and add their names to `file_names`
     virtual void listFiles(const String & path, std::vector<String> & file_names) const = 0;
@@ -286,7 +293,7 @@ public:
     {
         throw Exception(ErrorCodes::NOT_IMPLEMENTED,
             "Method `getCacheLayersNames()` is not implemented for disk: {}",
-            toString(getDataSourceDescription().type));
+            getDataSourceDescription().toString());
     }
 
     /// Returns a list of storage objects (contains path, size, ...).
@@ -296,7 +303,7 @@ public:
     {
         throw Exception(ErrorCodes::NOT_IMPLEMENTED,
             "Method `getStorageObjects()` not implemented for disk: {}",
-            toString(getDataSourceDescription().type));
+            getDataSourceDescription().toString());
     }
 
     /// For one local path there might be multiple remote paths in case of Log family engines.
@@ -313,11 +320,13 @@ public:
         {}
     };
 
-    virtual void getRemotePathsRecursive(const String &, std::vector<LocalPathWithObjectStoragePaths> &)
+    virtual void getRemotePathsRecursive(
+        const String &, std::vector<LocalPathWithObjectStoragePaths> &, const std::function<bool(const String &)> & /* skip_predicate */)
     {
-        throw Exception(ErrorCodes::NOT_IMPLEMENTED,
+        throw Exception(
+            ErrorCodes::NOT_IMPLEMENTED,
             "Method `getRemotePathsRecursive() not implemented for disk: {}`",
-            toString(getDataSourceDescription().type));
+            getDataSourceDescription().toString());
     }
 
     /// Batch request to remove multiple files.
@@ -405,7 +414,7 @@ public:
         throw Exception(
             ErrorCodes::NOT_IMPLEMENTED,
             "Method getMetadataStorage() is not implemented for disk type: {}",
-            toString(getDataSourceDescription().type));
+            getDataSourceDescription().toString());
     }
 
     /// Very similar case as for getMetadataDiskIfExistsOrSelf(). If disk has "metadata"
@@ -439,7 +448,7 @@ public:
         throw Exception(
             ErrorCodes::NOT_IMPLEMENTED,
             "Method getObjectStorage() is not implemented for disk type: {}",
-            toString(getDataSourceDescription().type));
+            getDataSourceDescription().toString());
     }
 
     /// Create disk object storage according to disk type.
@@ -450,7 +459,7 @@ public:
         throw Exception(
             ErrorCodes::NOT_IMPLEMENTED,
             "Method createDiskObjectStorage() is not implemented for disk type: {}",
-            toString(getDataSourceDescription().type));
+            getDataSourceDescription().toString());
     }
 
     virtual bool supportsStat() const { return false; }
@@ -474,7 +483,14 @@ protected:
     /// Base implementation of the function copy().
     /// It just opens two files, reads data by portions from the first file, and writes it to the second one.
     /// A derived class may override copy() to provide a faster implementation.
-    void copyThroughBuffers(const String & from_path, const std::shared_ptr<IDisk> & to_disk, const String & to_path, bool copy_root_dir, const ReadSettings & read_settings, WriteSettings write_settings);
+    void copyThroughBuffers(
+        const String & from_path,
+        const std::shared_ptr<IDisk> & to_disk,
+        const String & to_path,
+        bool copy_root_dir,
+        const ReadSettings & read_settings,
+        WriteSettings write_settings,
+        const std::function<void()> & cancellation_hook);
 
     virtual void checkAccessImpl(const String & path);
 

@@ -36,6 +36,7 @@ struct ExternalResultDescription
         vtDecimal256,
         vtArray,
         vtFixedString,
+        vtPoint,
         vtTuple,
     };
 
@@ -43,6 +44,9 @@ struct ExternalResultDescription
 
     Block sample_block;
     std::vector<TypeWithNullable> types;
+
+    ExternalResultDescription() = default;
+    explicit ExternalResultDescription(const Block & sample_block_);
 
     void init(const Block & sample_block_);
     static TypeWithNullable getValueTypeWithNullable(const DataTypePtr & type);
