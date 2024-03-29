@@ -416,6 +416,10 @@ dbms_target_link_libraries (
         clickhouse_common_io
         Poco::MongoDB
         Poco::Redis
+        ch_contrib::libbson # TODO: option
+        ch_contrib::libmongoc
+        ch_contrib::bsoncxx
+        ch_contrib::mongocxx
 )
 
 if (TARGET ch::mysqlxx)
