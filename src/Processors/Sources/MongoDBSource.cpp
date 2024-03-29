@@ -239,25 +239,6 @@ namespace
 
             case ValueType::vtEnum8:
             case ValueType::vtEnum16:
-            case ValueType::vtString:
-            {
-                if (value.type() == Poco::MongoDB::ElementTraits<ObjectId::Ptr>::TypeId)
-                {
-                    std::string string_id = value.toString();
-                    assert_cast<ColumnString &>(column).insertData(string_id.data(), string_id.size());
-                    break;
-                }
-                else if (value.type() == Poco::MongoDB::ElementTraits<String>::TypeId)
-                {
-                    String string = static_cast<const Poco::MongoDB::ConcreteElement<String> &>(value).value();
-                    assert_cast<ColumnString &>(column).insertData(string.data(), string.size());
-                    break;
-                }
-
-                throw Exception(ErrorCodes::TYPE_MISMATCH, "Type mismatch, expected String, got type id = {} for column {}",
-                                toString(value.type()), name);
-            }
-
             case ValueType::vtDate:
             {
                 if (value.type() != Poco::MongoDB::ElementTraits<Poco::Timestamp>::TypeId)
@@ -356,10 +337,10 @@ namespace
 
                 assert_cast<ColumnArray &>(column).insert(Array(dimensions[1].begin(), dimensions[1].end()));
                 break;
-
             }
             default:
-                throw Exception(ErrorCodes::UNKNOWN_TYPE, "Value of unsupported type: {}", column.getName());
+                String string = value.toString();
+                assert_cast<ColumnString &>(column).insertData(string.data(), string.size());
         }
     }
 
