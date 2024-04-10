@@ -1,14 +1,15 @@
 #pragma once
 
-#include <Poco/MongoDB/Connection.h>
-
 #include <Storages/IStorage.h>
+
+#include <mongocxx/client.hpp>
 
 namespace DB
 {
 /* Implements storage in the MongoDB database.
  * Use ENGINE = MongoDB(host:port, database, collection, user, password [, options]);
  * Read only.
+ * One stream only.
  */
 
 class StorageMongoDB final : public IStorage
@@ -58,17 +59,11 @@ public:
     static Configuration getConfiguration(ASTs engine_args, ContextPtr context);
 
 private:
-    void connectIfNotConnected();
+    bsoncxx::builder::basic::document transformSelectQuery(SelectQueryInfo & query);
 
     const std::string database_name;
     const std::string collection_name;
-    const std::string username;
-    const std::string password;
-    const std::string uri;
-
-    std::shared_ptr<Poco::MongoDB::Connection> connection;
-    bool authenticated = false;
-    std::mutex connection_mutex; /// Protects the variables `connection` and `authenticated`.
+    std::string uri;
 };
 
 }

@@ -1,25 +1,20 @@
+#include <memory>
+#include <unordered_set>
+
+#include <IO/Operators.h>
+#include <Common/parseAddress.h>
+#include <Parsers/ASTLiteral.h>
+#include <Interpreters/evaluateConstantExpression.h>
+#include <QueryPipeline/Pipe.h>
 #include <Storages/StorageMongoDB.h>
-#include <Storages/StorageMongoDBSocketFactory.h>
 #include <Storages/StorageFactory.h>
 #include <Storages/checkAndGetLiteralArgument.h>
 #include <Storages/NamedCollectionsHelpers.h>
-
-#include <Poco/MongoDB/Connection.h>
-#include <Poco/MongoDB/Cursor.h>
-#include <Poco/MongoDB/Database.h>
-#include <Interpreters/evaluateConstantExpression.h>
-#include <Core/Settings.h>
-#include <Interpreters/Context.h>
-#include <Common/parseAddress.h>
-#include <Common/NamedCollections/NamedCollections.h>
-#include <IO/Operators.h>
-#include <Parsers/ASTLiteral.h>
-#include <QueryPipeline/Pipe.h>
 #include <Processors/Sources/MongoDBSource.h>
 #include <Processors/Sinks/SinkToStorage.h>
-#include <unordered_set>
 
-#include <DataTypes/DataTypeArray.h>
+#include <mongocxx/instance.hpp>
+
 
 namespace DB
 {
@@ -29,6 +24,8 @@ namespace ErrorCodes
     extern const int NUMBER_OF_ARGUMENTS_DOESNT_MATCH;
     extern const int MONGODB_CANNOT_AUTHENTICATE;
 }
+
+mongocxx::instance inst{};
 
 StorageMongoDB::StorageMongoDB(
     const StorageID & table_id_,
@@ -45,9 +42,7 @@ StorageMongoDB::StorageMongoDB(
     : IStorage(table_id_)
     , database_name(database_name_)
     , collection_name(collection_name_)
-    , username(username_)
-    , password(password_)
-    , uri("mongodb://" + host_ + ":" + std::to_string(port_) + "/" + database_name_ + "?" + options_)
+    , uri("mongodb://" + username_ + ":" + password_ + "@" + host_ + ":" + std::to_string(port_) + "/" + database_name_ + "?" + options_)
 {
     StorageInMemoryMetadata storage_metadata;
     storage_metadata.setColumns(columns_);
@@ -55,164 +50,6 @@ StorageMongoDB::StorageMongoDB(
     storage_metadata.setComment(comment);
     setInMemoryMetadata(storage_metadata);
 }
-
-
-void StorageMongoDB::connectIfNotConnected()
-{
-    std::lock_guard lock{connection_mutex};
-    if (!connection)
-    {
-        StorageMongoDBSocketFactory factory;
-        connection = std::make_shared<Poco::MongoDB::Connection>(uri, factory);
-    }
-
-    if (!authenticated)
-    {
-        Poco::URI poco_uri(uri);
-        auto query_params = poco_uri.getQueryParameters();
-        auto auth_source = std::find_if(query_params.begin(), query_params.end(),
-                                        [&](const std::pair<std::string, std::string> & param) { return param.first == "authSource"; });
-        auto auth_db = database_name;
-        if (auth_source != query_params.end())
-            auth_db = auth_source->second;
-
-        if (!username.empty() && !password.empty())
-        {
-            Poco::MongoDB::Database poco_db(auth_db);
-            if (!poco_db.authenticate(*connection, username, password, Poco::MongoDB::Database::AUTH_SCRAM_SHA1))
-                throw Exception(ErrorCodes::MONGODB_CANNOT_AUTHENTICATE, "Cannot authenticate in MongoDB, incorrect user or password");
-        }
-
-        authenticated = true;
-    }
-}
-
-
-class StorageMongoDBSink : public SinkToStorage
-{
-public:
-    explicit StorageMongoDBSink(
-        const std::string & collection_name_,
-        const std::string & db_name_,
-        const StorageMetadataPtr & metadata_snapshot_,
-        std::shared_ptr<Poco::MongoDB::Connection> connection_)
-        : SinkToStorage(metadata_snapshot_->getSampleBlock())
-        , collection_name(collection_name_)
-        , db_name(db_name_)
-        , metadata_snapshot{metadata_snapshot_}
-        , connection(connection_)
-        , is_wire_protocol_old(isMongoDBWireProtocolOld(*connection_))
-    {
-    }
-
-    String getName() const override { return "StorageMongoDBSink"; }
-
-    void consume(Chunk chunk) override
-    {
-        Poco::MongoDB::Database db(db_name);
-        Poco::MongoDB::Document::Vector documents;
-
-        auto block = getHeader().cloneWithColumns(chunk.detachColumns());
-
-        size_t num_rows = block.rows();
-        size_t num_cols = block.columns();
-
-        const auto columns = block.getColumns();
-        const auto data_types = block.getDataTypes();
-        const auto data_names = block.getNames();
-
-        documents.reserve(num_rows);
-
-        for (const auto i : collections::range(0, num_rows))
-        {
-            Poco::MongoDB::Document::Ptr document = new Poco::MongoDB::Document();
-
-            for (const auto j : collections::range(0, num_cols))
-            {
-                insertValueIntoMongoDB(*document, data_names[j], *data_types[j], *columns[j], i);
-            }
-
-            documents.push_back(std::move(document));
-        }
-
-        if (is_wire_protocol_old)
-        {
-            Poco::SharedPtr<Poco::MongoDB::InsertRequest> insert_request = db.createInsertRequest(collection_name);
-            insert_request->documents() = std::move(documents);
-            connection->sendRequest(*insert_request);
-        }
-        else
-        {
-            Poco::SharedPtr<Poco::MongoDB::OpMsgMessage> insert_request = db.createOpMsgMessage(collection_name);
-            insert_request->setCommandName(Poco::MongoDB::OpMsgMessage::CMD_INSERT);
-            insert_request->documents() = std::move(documents);
-            connection->sendRequest(*insert_request);
-        }
-    }
-
-private:
-
-    void insertValueIntoMongoDB(
-        Poco::MongoDB::Document & document,
-        const std::string & name,
-        const IDataType & data_type,
-        const IColumn & column,
-        size_t idx)
-    {
-        WhichDataType which(data_type);
-
-        if (which.isArray())
-        {
-            const ColumnArray & column_array = assert_cast<const ColumnArray &>(column);
-            const ColumnArray::Offsets & offsets = column_array.getOffsets();
-
-            size_t offset = offsets[idx - 1];
-            size_t next_offset = offsets[idx];
-
-            const IColumn & nested_column = column_array.getData();
-
-            const auto * array_type = assert_cast<const DataTypeArray *>(&data_type);
-            const DataTypePtr & nested_type = array_type->getNestedType();
-
-            Poco::MongoDB::Array::Ptr array = new Poco::MongoDB::Array();
-            for (size_t i = 0; i + offset < next_offset; ++i)
-            {
-                insertValueIntoMongoDB(*array, Poco::NumberFormatter::format(i), *nested_type, nested_column, i + offset);
-            }
-
-            document.add(name, array);
-            return;
-        }
-
-        /// MongoDB does not support UInt64 type, so just cast it to Int64
-        if (which.isNativeUInt())
-            document.add(name, static_cast<Poco::Int64>(column.getUInt(idx)));
-        else if (which.isNativeInt())
-            document.add(name, static_cast<Poco::Int64>(column.getInt(idx)));
-        else if (which.isFloat32())
-            document.add(name, static_cast<Float64>(column.getFloat32(idx)));
-        else if (which.isFloat64())
-            document.add(name, static_cast<Float64>(column.getFloat64(idx)));
-        else if (which.isDate())
-            document.add(name, Poco::Timestamp(DateLUT::instance().fromDayNum(DayNum(column.getUInt(idx))) * 1000000));
-        else if (which.isDateTime())
-            document.add(name, Poco::Timestamp(column.getUInt(idx) * 1000000));
-        else
-        {
-            WriteBufferFromOwnString ostr;
-            data_type.getDefaultSerialization()->serializeText(column, idx, ostr, FormatSettings{});
-            document.add(name, ostr.str());
-        }
-    }
-
-    String collection_name;
-    String db_name;
-    StorageMetadataPtr metadata_snapshot;
-    std::shared_ptr<Poco::MongoDB::Connection> connection;
-
-    const bool is_wire_protocol_old;
-};
-
 
 Pipe StorageMongoDB::read(
     const Names & column_names,
@@ -223,8 +60,6 @@ Pipe StorageMongoDB::read(
     size_t max_block_size,
     size_t /*num_streams*/)
 {
-    connectIfNotConnected();
-
     storage_snapshot->check(column_names);
 
     Block sample_block;
@@ -234,13 +69,12 @@ Pipe StorageMongoDB::read(
         sample_block.insert({ column_data.type, column_data.name });
     }
 
-    return Pipe(std::make_shared<MongoDBSource>(connection, database_name, collection_name, Poco::MongoDB::Document{}, sample_block, max_block_size));
+    return Pipe(std::make_shared<MongoDBSource>(uri, database_name, collection_name, bsoncxx::builder::basic::make_document(), sample_block, max_block_size));
 }
 
-SinkToStoragePtr StorageMongoDB::write(const ASTPtr & /* query */, const StorageMetadataPtr & metadata_snapshot, ContextPtr /* context */, bool /*async_insert*/)
+SinkToStoragePtr StorageMongoDB::write(const ASTPtr & /* query */, const StorageMetadataPtr & /*metadata_snapshot*/, ContextPtr /* context */, bool /*async_insert*/)
 {
-    connectIfNotConnected();
-    return std::make_shared<StorageMongoDBSink>(collection_name, database_name, metadata_snapshot, connection);
+    return nullptr; // TODO: implement
 }
 
 StorageMongoDB::Configuration StorageMongoDB::getConfiguration(ASTs engine_args, ContextPtr context)
@@ -314,6 +148,12 @@ void registerStorageMongoDB(StorageFactory & factory)
     {
         .source_access_type = AccessType::MONGO,
     });
+}
+
+bsoncxx::builder::basic::document transformSelectQuery(SelectQueryInfo & /*query*/)
+{
+    auto filter = bsoncxx::builder::basic::document{};
+    return filter; // TODO: implement
 }
 
 }
