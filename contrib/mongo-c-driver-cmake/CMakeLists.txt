@@ -2,6 +2,10 @@ set (libbson_VERSION_MAJOR 1)
 set (libbson_VERSION_MINOR 27)
 set (libbson_VERSION_PATCH 0)
 set (libbson_VERSION 1.27.0)
+set (libmongoc_VERSION_MAJOR 1)
+set (libmongoc_VERSION_MINOR 27)
+set (libmongoc_VERSION_PATCH 0)
+set (libmongoc_VERSION 1.27.0)
 
 set(LIBBSON_SOURCES_ROOT "${ClickHouse_SOURCE_DIR}/contrib/mongo-c-driver/src")
 set(LIBBSON_SOURCE_DIR "${LIBBSON_SOURCES_ROOT}/libbson/src")
@@ -253,6 +257,10 @@ set(UTF8PROC_SOURCES "${UTF8PROC_SOURCE_DIR}/utf8proc.c")
 configure_file(
         ${LIBMONGOC_SOURCE_DIR}/mongoc/mongoc-config.h.in
         ${LIBMONGOC_SOURCE_DIR}/mongoc/mongoc-config.h
+)
+configure_file(
+        ${LIBMONGOC_SOURCE_DIR}/mongoc/mongoc-version.h.in
+        ${LIBMONGOC_SOURCE_DIR}/mongoc/mongoc-version.h
 )
 
 add_library(_libmongoc ${LIBMONGOC_SOURCES} ${COMMON_SOURCES} ${UTF8PROC_SOURCES})

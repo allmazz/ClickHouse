@@ -5,11 +5,10 @@
 #include <Core/ExternalResultDescription.h>
 #include <Processors/ISource.h>
 
-#include <bsoncxx/document/element.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/collection.hpp>
-#include <mongocxx/database.hpp>
 #include <mongocxx/cursor.hpp>
+#include <mongocxx/database.hpp>
 
 namespace DB
 {

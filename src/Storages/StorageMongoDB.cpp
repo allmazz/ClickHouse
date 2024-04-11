@@ -25,9 +25,9 @@ namespace ErrorCodes
     extern const int MONGODB_CANNOT_AUTHENTICATE;
 }
 
-bsoncxx::document::value createMongoDBQuery(mongocxx::options::find * options, SelectQueryInfo & /*query*/)
+bsoncxx::document::value createMongoDBQuery(mongocxx::options::find * options, SelectQueryInfo & query)
 {
-    options->limit(1);
+    options->limit(query.limit);
     auto test = bsoncxx::builder::basic::make_document();
     return test;
 }

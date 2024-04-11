@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Storages/IStorage.h>
+#include <Storages/SelectQueryInfo.h>
 
 #include <mongocxx/client.hpp>
 
