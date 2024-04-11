@@ -25,6 +25,13 @@ namespace ErrorCodes
     extern const int MONGODB_CANNOT_AUTHENTICATE;
 }
 
+bsoncxx::document::value createMongoDBQuery(mongocxx::options::find * options, SelectQueryInfo & /*query*/)
+{
+    options->limit(1);
+    auto test = bsoncxx::builder::basic::make_document();
+    return test;
+}
+
 mongocxx::instance inst{};
 
 StorageMongoDB::StorageMongoDB(
@@ -39,10 +46,10 @@ StorageMongoDB::StorageMongoDB(
     const ColumnsDescription & columns_,
     const ConstraintsDescription & constraints_,
     const String & comment)
-    : IStorage(table_id_)
-    , database_name(database_name_)
-    , collection_name(collection_name_)
-    , uri("mongodb://" + username_ + ":" + password_ + "@" + host_ + ":" + std::to_string(port_) + "/" + database_name_ + "?" + options_)
+    : IStorage{table_id_}
+    , database_name{database_name_}
+    , collection_name{collection_name_}
+    , uri{"mongodb://" + username_ + ":" + password_ + "@" + host_ + ":" + std::to_string(port_) + "/" + database_name_ + "?" + options_}
 {
     StorageInMemoryMetadata storage_metadata;
     storage_metadata.setColumns(columns_);
@@ -54,7 +61,7 @@ StorageMongoDB::StorageMongoDB(
 Pipe StorageMongoDB::read(
     const Names & column_names,
     const StorageSnapshotPtr & storage_snapshot,
-    SelectQueryInfo & /*query_info*/,
+    SelectQueryInfo & query_info,
     ContextPtr /*context*/,
     QueryProcessingStage::Enum /*processed_stage*/,
     size_t max_block_size,
@@ -69,7 +76,10 @@ Pipe StorageMongoDB::read(
         sample_block.insert({ column_data.type, column_data.name });
     }
 
-    return Pipe(std::make_shared<MongoDBSource>(uri, database_name, collection_name, bsoncxx::builder::basic::make_document(), sample_block, max_block_size));
+    auto options = mongocxx::options::find();
+
+    return Pipe(std::make_shared<MongoDBSource>(uri, database_name, collection_name, createMongoDBQuery(&options, query_info),
+                                                std::move(options), sample_block, max_block_size));
 }
 
 SinkToStoragePtr StorageMongoDB::write(const ASTPtr & /* query */, const StorageMetadataPtr & /*metadata_snapshot*/, ContextPtr /* context */, bool /*async_insert*/)
@@ -148,12 +158,6 @@ void registerStorageMongoDB(StorageFactory & factory)
     {
         .source_access_type = AccessType::MONGO,
     });
-}
-
-bsoncxx::builder::basic::document transformSelectQuery(SelectQueryInfo & /*query*/)
-{
-    auto filter = bsoncxx::builder::basic::document{};
-    return filter; // TODO: implement
 }
 
 }

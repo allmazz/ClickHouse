@@ -59,11 +59,9 @@ public:
     static Configuration getConfiguration(ASTs engine_args, ContextPtr context);
 
 private:
-    bsoncxx::builder::basic::document transformSelectQuery(SelectQueryInfo & query);
-
     const std::string database_name;
     const std::string collection_name;
-    std::string uri;
+    mongocxx::uri uri;
 };
 
 }

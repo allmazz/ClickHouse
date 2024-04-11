@@ -92,10 +92,6 @@ namespace
                 assert_cast<ColumnUUID &>(column).getData().push_back(parse<UUID>(value.get_string().value.data()));
                 break;
             }
-            case ValueType::vtArray:
-            {
-                break;
-            }
             case ValueType::vtString:
             {
                 auto value_string = std::string(value.get_utf8().value);
@@ -112,20 +108,21 @@ namespace
 
 
 MongoDBSource::MongoDBSource(
-    const std::string & uri,
+    const mongocxx::uri & uri,
     const std::string & database_name,
     const std::string & collection_name,
     const bsoncxx::v_noabi::document::view_or_value & query,
+    const mongocxx::options::find & options,
     Block & header_,
     const UInt64 & max_block_size_)
-    : ISource(header_)
-    , client(mongocxx::uri(uri))
-    , database(client.database(database_name))
-    , collection(database.collection(collection_name))
-    , cursor(collection.find(query))
-    , header(header_)
-    , max_block_size(max_block_size_)
-    , description(header)
+    : ISource{header_}
+    , client{uri}
+    , database{client.database(database_name)}
+    , collection{database.collection(collection_name)}
+    , cursor{collection.find(query, options)}
+    , header{header_}
+    , max_block_size{max_block_size_}
+    , description{header}
 {
 }
 
