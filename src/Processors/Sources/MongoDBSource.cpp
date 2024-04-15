@@ -150,7 +150,7 @@ MongoDBSource::MongoDBSource(
     const mongocxx::uri & uri,
     const std::string & database_name,
     const std::string & collection_name,
-    const bsoncxx::v_noabi::document::view_or_value & query,
+    const bsoncxx::document::view_or_value & query,
     const mongocxx::options::find & options,
     Block & header_,
     const UInt64 & max_block_size_)
