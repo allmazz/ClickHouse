@@ -1,5 +1,9 @@
 #pragma once
 
+#include "config.h"
+
+#if USE_MONGODB
+
 #include <Storages/IStorage.h>
 #include <Storages/SelectQueryInfo.h>
 
@@ -66,10 +70,11 @@ private:
 
     LoggerPtr log;
 
-    static bsoncxx::types::bson_value::value getBSONValue(const Field * field);
+    static bsoncxx::types::bson_value::value toBSONValue(const Field * field);
     static String getFuncName(const String & func);
     static bsoncxx::document::value visitFunction(const ASTFunction * func);
     bsoncxx::document::value createMongoDBQuery(mongocxx::options::find * options, SelectQueryInfo * query);
 };
 
 }
+#endif

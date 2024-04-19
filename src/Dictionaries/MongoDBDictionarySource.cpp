@@ -1,20 +1,43 @@
-#include <Storages/ExternalDataSourceConfiguration.h>
-
+#include "config.h"
 #include "MongoDBDictionarySource.h"
 #include "DictionarySourceFactory.h"
 #include "DictionaryStructure.h"
 
+#include <Storages/ExternalDataSourceConfiguration.h>
+
+#if USE_MONGODB
 #include <bsoncxx/builder/basic/array.hpp>
+
+#include <Common/logger_useful.h>
+#include <IO/WriteHelpers.h>
+
+using bsoncxx::builder::basic::kvp;
+using bsoncxx::builder::basic::make_document;
+#endif
 
 namespace DB
 {
 
+namespace ErrorCodes
+{
+    #if USE_MONGODB
+    extern const int NOT_IMPLEMENTED;
+    extern const int UNSUPPORTED_METHOD;
+    extern const int MONGODB_CANNOT_AUTHENTICATE;
+    #else
+    extern const int SUPPORT_IS_DISABLED;
+    #endif
+}
+
+#if USE_MONGODB
 static const std::unordered_set<std::string_view> dictionary_allowed_keys = {
     "host", "port", "user", "password", "db", "database", "uri", "collection", "name", "options"};
+#endif
 
 void registerDictionarySourceMongoDB(DictionarySourceFactory & factory)
 {
-    auto create_mongo_db_dictionary = [](
+    #if USE_MONGODB
+    auto create_dictionary_source = [](
         const DictionaryStructure & dict_struct,
         const Poco::Util::AbstractConfiguration & config,
         const std::string & root_config_prefix,
@@ -54,28 +77,25 @@ void registerDictionarySourceMongoDB(DictionarySourceFactory & factory)
             config.getString(config_prefix + ".options", ""),
             sample_block);
     };
+    #else
+    auto create_dictionary_source = [](
+        const DictionaryStructure & /* dict_struct */,
+        const Poco::Util::AbstractConfiguration & /* config */,
+        const std::string & /* root_config_prefix */,
+        Block & /* sample_block */,
+        ContextPtr /* context */,
+        const std::string & /* default_database */,
+        bool /* created_from_ddl */) -> DictionarySourcePtr
+    {
+        throw Exception(ErrorCodes::SUPPORT_IS_DISABLED,
+        "Dictionary source of type `mongodb` is disabled because ClickHouse was built without mongodb support.");
+    };
+    #endif
 
-    factory.registerSource("mongodb", create_mongo_db_dictionary);
+    factory.registerSource("mongodb", create_dictionary_source);
 }
 
-}
-
-#include <Common/logger_useful.h>
-#include <IO/WriteHelpers.h>
-
-using bsoncxx::builder::basic::kvp;
-using bsoncxx::builder::basic::make_document;
-
-namespace DB
-{
-namespace ErrorCodes
-{
-    extern const int NOT_IMPLEMENTED;
-    extern const int UNSUPPORTED_METHOD;
-    extern const int MONGODB_CANNOT_AUTHENTICATE;
-}
-
-
+#if USE_MONGODB
 static const UInt64 max_block_size = 8192;
 
 
@@ -213,5 +233,6 @@ std::string MongoDBDictionarySource::toString() const
 {
     return fmt::format("MongoDB: {}.{},{}{}:{}", database_name, collection_name, (username.empty() ? " " : " " + username + '@'), host, port);
 }
+#endif
 
 }

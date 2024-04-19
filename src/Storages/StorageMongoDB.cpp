@@ -1,12 +1,16 @@
+#include "config.h"
+
+#if USE_MONGODB
 #include <memory>
 
+#include <Analyzer/ConstantNode.h>
 #include <Analyzer/FunctionNode.h>
 #include <Analyzer/QueryNode.h>
 #include <IO/Operators.h>
 #include <Interpreters/evaluateConstantExpression.h>
-#include <Parsers/ASTLiteral.h>
 #include <Parsers/ASTFunction.h>
 #include <Parsers/ASTIdentifier.h>
+#include <Parsers/ASTLiteral.h>
 #include <Processors/Sinks/SinkToStorage.h>
 #include <Processors/Sources/MongoDBSource.h>
 #include <QueryPipeline/Pipe.h>
@@ -14,12 +18,19 @@
 #include <Storages/StorageFactory.h>
 #include <Storages/StorageMongoDB.h>
 #include <Storages/checkAndGetLiteralArgument.h>
-#include <bsoncxx/json.hpp>
 #include <Common/ErrorCodes.h>
 #include <Common/parseAddress.h>
 
 #include <mongocxx/instance.hpp>
 
+#include <bsoncxx/json.hpp>
+#include <bsoncxx/builder/basic/document.hpp>
+#include <bsoncxx/builder/basic/array.hpp>
+
+using bsoncxx::builder::basic::document;
+using bsoncxx::builder::basic::array;
+using bsoncxx::builder::basic::make_document;
+using bsoncxx::builder::basic::kvp;
 
 namespace DB
 {
@@ -49,7 +60,7 @@ StorageMongoDB::StorageMongoDB(
     : IStorage{table_id_}
     , database_name{database_name_}
     , collection_name{collection_name_}
-    , uri{"mongodb://" + username_ + ":" + password_ + "@" + host_ + ":" + std::to_string(port_) + "/" + database_name_ + "?" + options_}
+    , uri{"mongodb://" + username_ + ":" + password_ + "@" + host_ + ":" + toString(port_) + "/" + database_name_ + "?" + options_}
     , log(getLogger("StorageMongoDB (" + table_id_.table_name + ")"))
 {
     StorageInMemoryMetadata storage_metadata;
@@ -162,7 +173,7 @@ String StorageMongoDB::getFuncName(const String & func)
     throw Exception(ErrorCodes::NOT_IMPLEMENTED, "function '{}' is not supported", func);
 }
 
-bsoncxx::types::bson_value::value StorageMongoDB::getBSONValue(const Field * field)
+bsoncxx::types::bson_value::value StorageMongoDB::toBSONValue(const Field * field)
 {
     switch(field->getType())
     {
@@ -171,32 +182,32 @@ bsoncxx::types::bson_value::value StorageMongoDB::getBSONValue(const Field * fie
         case Field::Types::UInt64:
             return static_cast<Int64>(field->get<UInt64 &>());
         case Field::Types::Int64:
-            return field->get<Int64>();
+            return field->get<Int64 &>();
         case Field::Types::Float64:
-            return field->get<Float64>();
+            return field->get<Float64 &>();
         case Field::Types::String:
-            return field->get<String>();
+            return field->get<String &>();
         case Field::Types::Array:
         {
-            auto arr = bsoncxx::builder::basic::array();
+            auto arr = array();
             for (const auto & tuple_field : field->get<Array &>())
-                arr.append(getBSONValue(&tuple_field));
+                arr.append(toBSONValue(&tuple_field));
             return arr.view();
         }
         case Field::Types::Tuple:
         {
-            auto arr = bsoncxx::builder::basic::array();
+            auto arr =array();
             for (const auto & tuple_field : field->get<Tuple &>())
-                arr.append(getBSONValue(&tuple_field));
+                arr.append(toBSONValue(&tuple_field));
             return arr.view();
         }
         case Field::Types::Map:
         {
-            auto doc = bsoncxx::builder::basic::document();
+            auto doc = document();
             for (const auto & element : field->get<Map &>())
             {
                 const auto & tuple = element.get<Tuple &>();
-                doc.append(bsoncxx::builder::basic::kvp(tuple.at(0).get<String>(), getBSONValue(&tuple.at(1))));
+                doc.append(kvp(tuple.at(0).get<String &>(), toBSONValue(&tuple.at(1))));
             }
             return doc.view();
         }
@@ -206,9 +217,9 @@ bsoncxx::types::bson_value::value StorageMongoDB::getBSONValue(const Field * fie
             return static_cast<bool>(field->get<bool &>());
         case Field::Types::Object:
         {
-            auto doc = bsoncxx::builder::basic::document();
+            auto doc = document();
             for (const auto & [key, var] : field->get<Object &>())
-                doc.append(bsoncxx::builder::basic::kvp(key, getBSONValue(&var)));
+                doc.append(kvp(key, toBSONValue(&var)));
             return doc.view();
         }
         default:
@@ -225,32 +236,17 @@ bsoncxx::document::value StorageMongoDB::visitFunction(const ASTFunction * func)
         {
             const auto & expression = explist->children.at(1);
             if (const auto & literal = expression->as<ASTLiteral>())
-            {
-                return bsoncxx::builder::basic::make_document(
-                    bsoncxx::builder::basic::kvp(identifier->shortName(),
-                        bsoncxx::builder::basic::make_document(
-                            bsoncxx::builder::basic::kvp(func_name, getBSONValue(&literal->value))
-                        )
-                    )
-                );
-            }
+                return make_document(kvp(identifier->shortName(), make_document(kvp(func_name, toBSONValue(&literal->value)))));
             if (const auto & child_func = expression->as<ASTFunction>())
-            {
-                return bsoncxx::builder::basic::make_document(
-                    bsoncxx::builder::basic::kvp(identifier->shortName(),
-                        bsoncxx::builder::basic::make_document(
-                            bsoncxx::builder::basic::kvp(func_name, visitFunction(child_func))
-                        )
-                    )
-                );
-            }
+                return make_document(kvp(identifier->shortName(), make_document(kvp(func_name, visitFunction(child_func)))));
+
             throw Exception(ErrorCodes::LOGICAL_ERROR,
                 "error during parsing the AST: the Function must have an ExpressionList or a Function as second argument, got '{}' instead",
                 expression->formatForErrorMessage());
         }
 
 
-        auto arr = bsoncxx::builder::basic::array();
+        auto arr = array();
         for (const auto & child : explist->children)
         {
             if (const auto & child_func = child->as<ASTFunction>())
@@ -260,7 +256,7 @@ bsoncxx::document::value StorageMongoDB::visitFunction(const ASTFunction * func)
                     "error during parsing the AST: expected a function in the ExpressionList, got '{}' instead",
                     child->formatForErrorMessage());
         }
-        return bsoncxx::builder::basic::make_document(bsoncxx::builder::basic::kvp(func_name, arr));
+        return make_document(kvp(func_name, std::move(arr)));
     }
     throw Exception(ErrorCodes::LOGICAL_ERROR,
         "error during parsing the AST: first child must be an ExpressionList, got '{}' instead", func->children.at(0)->formatForErrorMessage());
@@ -275,9 +271,14 @@ bsoncxx::document::value StorageMongoDB::createMongoDBQuery(mongocxx::options::f
     if (query_tree.hasLimitBy()) 
         throw Exception(ErrorCodes::NOT_IMPLEMENTED,"LIMIT BY is not supported.");
     if (query_tree.hasOffset())
-        throw Exception(ErrorCodes::NOT_IMPLEMENTED,"OFFSET is not supported.");
+        options->skip(query_tree.getOffset()->as<ConstantNode &>().getValue().safeGet<UInt64>());
     if (query_tree.hasWindow())
         throw Exception(ErrorCodes::NOT_IMPLEMENTED,"WINDOW is not supported.");
+
+    // TODO: _CAST support
+    // TODO: projections
+    // TODO: sort
+    // TODO: aggregation functions
 
     if (query_tree.hasWhere())
     {
@@ -286,7 +287,7 @@ bsoncxx::document::value StorageMongoDB::createMongoDBQuery(mongocxx::options::f
         return filter;
     }
 
-    return bsoncxx::builder::basic::make_document();
+    return make_document();
 }
 
 
@@ -315,3 +316,4 @@ void registerStorageMongoDB(StorageFactory & factory)
 }
 
 }
+#endif

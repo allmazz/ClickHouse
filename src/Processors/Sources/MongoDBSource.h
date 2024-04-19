@@ -1,7 +1,8 @@
 #pragma once
 
-#include <Core/Block.h>
-#include <Core/Field.h>
+#include "config.h"
+
+#if USE_MONGODB
 #include <Core/ExternalResultDescription.h>
 #include <Processors/ISource.h>
 
@@ -46,3 +47,4 @@ private:
 };
 
 }
+#endif

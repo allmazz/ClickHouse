@@ -1,3 +1,10 @@
+option(USE_MONGODB "Enable MongoDB" ${ENABLE_LIBRARIES})
+
+if (NOT USE_MONGODB)
+    message(STATUS "Not using mongocxx and bsoncxx")
+    return()
+endif()
+
 set(BSONCXX_SOURCES_DIR "${ClickHouse_SOURCE_DIR}/contrib/mongo-cxx-driver/src/bsoncxx")
 set(BSONCXX_SOURCES
         ${BSONCXX_SOURCES_DIR}/lib/bsoncxx/v_noabi/bsoncxx/array/element.cpp

@@ -1,3 +1,10 @@
+option(USE_MONGODB "Enable MongoDB" ${ENABLE_LIBRARIES})
+
+if (NOT USE_MONGODB)
+    message(STATUS "Not using libmongoc and libbson")
+    return()
+endif()
+
 set (libbson_VERSION_MAJOR 1)
 set (libbson_VERSION_MINOR 27)
 set (libbson_VERSION_PATCH 0)
