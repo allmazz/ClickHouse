@@ -1,5 +1,8 @@
 #pragma once
 
+#include "config.h"
+
+#if USE_MONGODB
 #include <Processors/Sources/MongoDBSource.h>
 #include <Core/Block.h>
 
@@ -73,3 +76,4 @@ private:
 };
 
 }
+#endif
