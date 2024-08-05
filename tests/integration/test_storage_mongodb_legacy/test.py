@@ -1,4 +1,5 @@
 import pymongo
+from uuid import UUID
 
 import pytest
 from helpers.client import QueryRuntimeException
@@ -73,6 +74,28 @@ def test_simple_select(started_cluster):
 
 
 @pytest.mark.parametrize("started_cluster", [False], indirect=["started_cluster"])
+def test_uuid(started_cluster):
+    mongo_connection = get_mongo_connection(started_cluster)
+    db = mongo_connection["test"]
+    db.add_user("root", "clickhouse")
+    mongo_table = db["uuid_table"]
+    mongo_table.insert({"key": 0, "data": UUID("f0e77736-91d1-48ce-8f01-15123ca1c7ed")})
+
+    node = started_cluster.instances["node"]
+    node.query(
+        "CREATE TABLE uuid_mongo_table(key UInt64, data UUID) ENGINE = MongoDB('mongo1:27017', 'test', 'uuid_table', 'root', 'clickhouse')"
+    )
+
+    assert node.query("SELECT COUNT() FROM uuid_mongo_table") == "1\n"
+    assert (
+            node.query("SELECT data from uuid_mongo_table where key = 0")
+            == "f0e77736-91d1-48ce-8f01-15123ca1c7ed\n"
+    )
+    node.query("DROP TABLE uuid_mongo_table")
+    mongo_table.drop()
+
+
+@pytest.mark.parametrize("started_cluster", [False], indirect=["started_cluster"])
 def test_simple_select_from_view(started_cluster):
     mongo_connection = get_mongo_connection(started_cluster)
     db = mongo_connection["test"]
@@ -140,6 +163,10 @@ def test_arrays(started_cluster):
                     "f0e77736-91d1-48ce-8f01-15123ca1c7ed",
                     "93376a07-c044-4281-a76e-ad27cf6973c5",
                 ],
+                "arr_mongo_uuid": [
+                    UUID("f0e77736-91d1-48ce-8f01-15123ca1c7ed"),
+                    UUID("93376a07-c044-4281-a76e-ad27cf6973c5"),
+                ],
                 "arr_arr_bool": [
                     [True, False, True],
                     [True],
@@ -174,6 +201,7 @@ def test_arrays(started_cluster):
         "arr_datetime Array(DateTime),"
         "arr_string Array(String),"
         "arr_uuid Array(UUID),"
+        "arr_mongo_uuid Array(UUID),"
         "arr_arr_bool Array(Array(Bool)),"
         "arr_empty Array(UInt64),"
         "arr_null Array(UInt64),"
@@ -219,6 +247,11 @@ def test_arrays(started_cluster):
 
     assert (
         node.query(f"SELECT arr_uuid FROM arrays_mongo_table WHERE key = 42")
+        == "['f0e77736-91d1-48ce-8f01-15123ca1c7ed','93376a07-c044-4281-a76e-ad27cf6973c5']\n"
+    )
+
+    assert (
+        node.query(f"SELECT arr_mongo_uuid FROM arrays_mongo_table WHERE key = 42")
         == "['f0e77736-91d1-48ce-8f01-15123ca1c7ed','93376a07-c044-4281-a76e-ad27cf6973c5']\n"
     )
 
@@ -377,8 +410,9 @@ def test_no_credentials(started_cluster):
     simple_mongo_table.insert_many(data)
 
     node = started_cluster.instances["node"]
+    node.query("drop table if exists simple_mongo_table_2")
     node.query(
-        f"create table simple_mongo_table_2(key UInt64, data String) engine = MongoDB('mongo_no_cred:27017', 'test', 'simple_table', '', '')"
+        "create table simple_mongo_table_2(key UInt64, data String) engine = MongoDB('mongo2:27017', 'test', 'simple_table', '', '')"
     )
     assert node.query("SELECT count() FROM simple_mongo_table_2") == "100\n"
     simple_mongo_table.drop()
@@ -406,12 +440,15 @@ def test_auth_source(started_cluster):
     simple_mongo_table.insert_many(data)
 
     node = started_cluster.instances["node"]
+    node.query("drop table if exists simple_mongo_table_fail")
     node.query(
-        "create table simple_mongo_table_fail(key UInt64, data String) engine = MongoDB('mongo_no_cred:27017', 'test', 'simple_table', 'root', 'clickhouse')"
+        "create table simple_mongo_table_fail(key UInt64, data String) engine = MongoDB('mongo2:27017', 'test', 'simple_table', 'root', 'clickhouse')"
     )
     node.query_and_get_error("SELECT count() FROM simple_mongo_table_fail")
+
+    node.query("drop table if exists simple_mongo_table_ok")
     node.query(
-        "create table simple_mongo_table_ok(key UInt64, data String) engine = MongoDB('mongo_no_cred:27017', 'test', 'simple_table', 'root', 'clickhouse', 'authSource=admin')"
+        "create table simple_mongo_table_ok(key UInt64, data String) engine = MongoDB('mongo2:27017', 'test', 'simple_table', 'root', 'clickhouse', 'authSource=admin')"
     )
     assert node.query("SELECT count() FROM simple_mongo_table_ok") == "100\n"
     simple_mongo_table.drop()
@@ -430,7 +467,7 @@ def test_missing_columns(started_cluster):
         data.append({"key": i})
     simple_mongo_table.insert_many(data)
 
-    node = started_cluster.instances["node"]
+    node = stQarted_cluster.instances["node"]
     node.query("drop table if exists simple_mongo_table")
     node.query(
         "create table simple_mongo_table(key UInt64, data Nullable(String)) engine = MongoDB(mongo1)"
@@ -457,13 +494,13 @@ def test_simple_insert_select(started_cluster):
     )
 
     assert (
-        node.query("SELECT data from simple_mongo_table where key = 7").strip()
-        == "kek7"
+            node.query("SELECT data from simple_mongo_table where key = 7").strip()
+            == "kek7"
     )
     node.query("INSERT INTO simple_mongo_table(key) SELECT 12")
     assert int(node.query("SELECT count() from simple_mongo_table")) == 11
     assert (
-        node.query("SELECT data from simple_mongo_table where key = 12").strip() == ""
+            node.query("SELECT data from simple_mongo_table where key = 12").strip() == ""
     )
 
     node.query("DROP TABLE simple_mongo_table")
