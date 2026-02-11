@@ -176,7 +176,7 @@ ASTPtr DatabaseSQLite::getCreateDatabaseQueryImpl() const
     auto create_query = make_intrusive<ASTCreateQuery>();
     create_query->setDatabase(database_name);
     create_query->set(create_query->storage, database_engine_define);
-    create_query->temporary = isTemporary();
+    create_query->setIsTemporary(isTemporary());
 
     if (!comment.empty())
         create_query->set(create_query->comment, make_intrusive<ASTLiteral>(comment));

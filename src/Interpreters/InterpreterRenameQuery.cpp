@@ -82,6 +82,7 @@ BlockIO InterpreterRenameQuery::execute()
     for (auto & table_guard : table_guards)
         table_guard.second = database_catalog.getDDLGuard(table_guard.first.database_name, table_guard.first.table_name, nullptr);
 
+    // https://github.com/ClickHouse/ClickHouse/pull/92610#discussion_r2703846227
     getContext()->checkAccess(getRequiredAccess(rename.database ? RenameType::RenameDatabase : RenameType::RenameTable));
 
     if (rename.database)

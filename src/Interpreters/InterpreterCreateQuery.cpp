@@ -191,7 +191,7 @@ InterpreterCreateQuery::InterpreterCreateQuery(const ASTPtr & query_ptr_, Contex
 BlockIO InterpreterCreateQuery::createDatabase(ASTCreateQuery & create)
 {
     const auto & context = getContext();
-    if (create.temporary)
+    if (create.isTemporary())
     {
         if (!context->getSettingsRef()[Setting::allow_experimental_temporary_databases])
             throw Exception(ErrorCodes::SUPPORT_IS_DISABLED,
@@ -256,9 +256,9 @@ BlockIO InterpreterCreateQuery::createDatabase(ASTCreateQuery & create)
     auto default_db_disk = context->getDatabaseDisk();
 
     /// Will write file with database metadata, if needed.
-    default_db_disk->createDirectories(DatabaseCatalog::getMetadataDirPath(create.temporary));
-    auto metadata_file_path = DatabaseCatalog::getMetadataFilePath(database_name, create.temporary);
-    auto metadata_tmp_file_path = DatabaseCatalog::getMetadataTmpFilePath(database_name, create.temporary);
+    default_db_disk->createDirectories(DatabaseCatalog::getMetadataDirPath(create.isTemporary()));
+    auto metadata_file_path = DatabaseCatalog::getMetadataFilePath(database_name, create.isTemporary());
+    auto metadata_tmp_file_path = DatabaseCatalog::getMetadataTmpFilePath(database_name, create.isTemporary());
 
     fs::path metadata_path;
     if (!create.storage && create.attach)
@@ -311,7 +311,7 @@ BlockIO InterpreterCreateQuery::createDatabase(ASTCreateQuery & create)
         if (create.uuid == UUIDHelpers::Nil)
             create.uuid = UUIDHelpers::generateV4();
 
-        metadata_path = DatabaseCatalog::getStoreDirPath(create.uuid, create.temporary);
+        metadata_path = DatabaseCatalog::getStoreDirPath(create.uuid, create.isTemporary());
 
         if (!create.attach && default_db_disk->existsDirectory(metadata_path) && !default_db_disk->isDirectoryEmpty(metadata_path))
             throw Exception(ErrorCodes::DATABASE_ALREADY_EXISTS, "Metadata directory {} already exists and is not empty", metadata_path.string());
@@ -326,7 +326,7 @@ BlockIO InterpreterCreateQuery::createDatabase(ASTCreateQuery & create)
         /// a) the initiator of `ON CLUSTER` query generated it to ensure the same UUIDs are used on different hosts; or
         /// b) `RESTORE from backup` query generated it to ensure the same UUIDs are used on different hosts.
         create.uuid = UUIDHelpers::Nil;
-        metadata_path = DatabaseCatalog::getMetadataDirPath(database_name, create.temporary);
+        metadata_path = DatabaseCatalog::getMetadataDirPath(database_name, create.isTemporary());
     }
 
     if (create.storage->engine->name == "MaterializedPostgreSQL"
@@ -388,7 +388,7 @@ BlockIO InterpreterCreateQuery::createDatabase(ASTCreateQuery & create)
         DatabaseCatalog::instance().attachDatabase(database_name, database);
         added = true;
 
-        if (create.temporary)
+        if (create.isTemporary())
         {
             context->getSessionContext()->addTemporaryDatabase(database_name, database);
             temporary_attached = true;
@@ -2493,7 +2493,7 @@ BlockIO InterpreterCreateQuery::execute()
     {
         if (create.database)
         {
-            bool is_temp = create.temporary;
+            bool is_temp = create.isTemporary();
             if (!is_temp)
             {
                 const auto & db = DatabaseCatalog::instance().tryGetDatabase(create.getDatabase(), getContext());
@@ -2535,7 +2535,7 @@ AccessRightsElements InterpreterCreateQuery::getRequiredAccess() const
 
     if (!create.table)
     {
-        required_access.emplace_back(!create.temporary ? AccessType::CREATE_DATABASE : AccessType::CREATE_TEMPORARY_DATABASE, create.getDatabase());
+        required_access.emplace_back(!create.isTemporary() ? AccessType::CREATE_DATABASE : AccessType::CREATE_TEMPORARY_DATABASE, create.getDatabase());
     }
     else if (create.is_dictionary)
     {

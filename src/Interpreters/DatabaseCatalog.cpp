@@ -732,8 +732,8 @@ void DatabaseCatalog::updateMetadataFile(const String & database_name, const AST
     writeChar('\n', statement_buf);
     String statement = statement_buf.str();
 
-    auto metadata_file_path = getMetadataFilePath(database_name, ast_create_query->temporary);
-    auto metadata_tmp_file_path = getMetadataTmpFilePath(database_name, ast_create_query->temporary);
+    auto metadata_file_path = getMetadataFilePath(database_name, ast_create_query->isTemporary());
+    auto metadata_tmp_file_path = getMetadataTmpFilePath(database_name, ast_create_query->isTemporary());
     auto default_db_disk = getContext()->getDatabaseDisk();
 
     writeMetadataFile(
@@ -980,7 +980,7 @@ DDLGuardPtr DatabaseCatalog::getDDLGuard(const String & database, const String &
         guard = std::make_unique<DDLGuard>(db_guard.table_guards, db_guard.database_ddl_mutex, std::move(lock), table, database);
     }
 
-    if (expected_database && expected_database != tryGetDatabase(database).get())
+    if (expected_database && expected_database != tryGetDatabase(database, {}, GetDatabasesOptions{.skip_temporary_owner_check = true}).get())
         throw Exception(ErrorCodes::UNFINISHED, "The database {} was dropped or renamed concurrently", database);
 
     return guard;

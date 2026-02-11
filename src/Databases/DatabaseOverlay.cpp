@@ -190,7 +190,7 @@ ASTPtr DatabaseOverlay::getCreateDatabaseQueryImpl() const
 {
     auto query = make_intrusive<ASTCreateQuery>();
     query->setDatabase(database_name);
-    query->temporary = isTemporary();
+    query->setIsTemporary(isTemporary());
     return query;
 }
 

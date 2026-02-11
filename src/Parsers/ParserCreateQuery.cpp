@@ -1413,7 +1413,7 @@ bool ParserCreateDatabaseQuery::parseImpl(Pos & pos, ASTPtr & node, Expected & e
     node = query;
 
     query->attach = attach;
-    query->temporary = is_temporary;
+    query->setIsTemporary(is_temporary);
     query->if_not_exists = if_not_exists;
 
     query->uuid = uuid;

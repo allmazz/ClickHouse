@@ -822,7 +822,7 @@ ASTPtr DatabaseDataLake::getCreateDatabaseQueryImpl() const
     create_query->setDatabase(database_name);
     create_query->set(create_query->storage, database_engine_definition);
     create_query->uuid = db_uuid;
-    create_query->temporary = isTemporary();
+    create_query->setIsTemporary(isTemporary());
     return create_query;
 }
 

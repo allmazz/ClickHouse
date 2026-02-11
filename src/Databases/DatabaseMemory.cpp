@@ -101,7 +101,7 @@ ASTPtr DatabaseMemory::getCreateDatabaseQueryImpl() const
     engine->setNoEmptyArgs(true);
     create_query->storage->set(create_query->storage->engine, engine);
 
-    create_query->temporary = isTemporary();
+    create_query->setIsTemporary(isTemporary());
     if (!comment.empty())
         create_query->set(create_query->comment, make_intrusive<ASTLiteral>(comment));
 

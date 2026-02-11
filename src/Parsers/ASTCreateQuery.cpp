@@ -309,7 +309,7 @@ void ASTCreateQuery::formatQueryImpl(WriteBuffer & ostr, const FormatSettings & 
     {
         ostr
             << (attach ? "ATTACH " : "CREATE ")
-            << (temporary ? "TEMPORARY " : "")
+            << (isTemporary() ? "TEMPORARY " : "")
             << "DATABASE "
             << (if_not_exists ? "IF NOT EXISTS " : "");
 

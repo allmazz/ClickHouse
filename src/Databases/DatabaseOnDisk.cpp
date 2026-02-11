@@ -582,7 +582,7 @@ ASTPtr DatabaseOnDisk::getCreateDatabaseQueryImpl() const
     }
 
     auto & ast_create_query = ast->as<ASTCreateQuery &>();
-    ast_create_query.temporary = isTemporary();
+    ast_create_query.setIsTemporary(isTemporary());
     if (!comment.empty())
         ast_create_query.set(ast_create_query.comment, make_intrusive<ASTLiteral>(comment));
 
