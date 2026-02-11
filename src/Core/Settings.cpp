@@ -7565,7 +7565,7 @@ Allow experimental database engine DataLakeCatalog with catalog_type = 'paimon_r
 Allow to create experimental temporary databases.
 )", EXPERIMENTAL) \
     DECLARE(Bool, show_temporary_databases_from_other_sessions_in_system_tables, false, R"(
-Show temporary databases from other sessions in system tables.
+Show temporary databases from other sessions in system tables. Requires SHOW ALL TEMPORARY DATABASES grant.
 )", EXPERIMENTAL) \
     \
     /* ####################################################### */ \

@@ -307,6 +307,8 @@ protected:
 
         const auto access = context->getAccess();
         const bool need_to_check_access_for_databases = !access->isGranted(AccessType::SHOW_TABLES);
+        if (context->getSettingsRef()[Setting::show_temporary_databases_from_other_sessions_in_system_tables])
+            context->checkAccess(AccessType::SHOW_ALL_TEMPORARY_DATABASES);
 
         size_t rows_count = 0;
         while (rows_count < max_block_size)

@@ -228,7 +228,25 @@ def test_system_tables(request, table: str):
     drop_db(session1, db1)
 
 
-def test_access_rights(request):
+@pytest.mark.parametrize("table", ["databases", "tables"])
+def test_show_all_grant(request, table: str):
+    session1, db1 = get_session_id_with_db_name(request, 1)
+    create_db_with_table(session1, db1)
+
+    session2, user2 = get_session_id(request, 2), get_user(request, 2)
+    query(session1, f"CREATE USER {user2}")
+    query(session1, f"GRANT SHOW TABLES ON *.* TO {user2}")
+
+    assert get_dbs_from_system_table(session2, [db1], False, table=table, user=user2) == TSV([])
+    with pytest.raises(Exception, match=f"To execute this query, it's necessary to have the grant SHOW ALL TEMPORARY DATABASES ON *.*"):
+        get_dbs_from_system_table(session2, [db1], True, table=table, user=user2)
+
+    query(session1, f"GRANT SHOW ALL TEMPORARY DATABASES ON *.* TO {user2}")
+    assert get_dbs_from_system_table(session2, [db1], False, table=table, user=user2) == TSV([])
+    assert get_dbs_from_system_table(session2, [db1], True, table=table, user=user2) == TSV([[db1]])
+
+
+def test_create_grant(request):
     session1 = get_session_id(request, 1)
 
     session2, db2 = get_session_id_with_db_name(request, 2)

@@ -110,6 +110,9 @@ void fillDataWithDatabasesTablesColumns(MutableColumns & res_columns, const Cont
 {
     const auto & access = context->getAccess();
     const auto & settings = context->getSettingsRef();
+
+    if (context->getSettingsRef()[Setting::show_temporary_databases_from_other_sessions_in_system_tables])
+        context->checkAccess(AccessType::SHOW_ALL_TEMPORARY_DATABASES);
     const auto & databases = DatabaseCatalog::instance().getDatabases(GetDatabasesOptions{
         .with_datalake_catalogs = settings[Setting::show_data_lake_catalogs_in_system_tables],
         .skip_temporary_owner_check = settings[Setting::show_temporary_databases_from_other_sessions_in_system_tables],
