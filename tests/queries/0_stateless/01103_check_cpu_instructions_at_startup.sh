@@ -19,7 +19,9 @@ fi
 
 function run_with_cpu()
 {
-    qemu-x86_64-static -cpu "$@" "$command" --query "SELECT 1" 2>&1 | \
+    # Limit memory to 1 GB to fail fast if a sanitized binary is run under QEMU
+    # Use --data instead of -m because RLIMIT_RSS does not work since Linux 2.6.x
+    prlimit --data=5000000000 qemu-x86_64-static -cpu "$@" "$command" --query "SELECT 1" 2>&1 | \
       grep -v -F "warning: TCG doesn't support requested feature" | \
       grep -v -F 'Unknown host IFA type' ||:
 }

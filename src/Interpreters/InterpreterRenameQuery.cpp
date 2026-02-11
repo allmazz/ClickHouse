@@ -24,6 +24,7 @@ namespace Setting
 namespace ErrorCodes
 {
     extern const int NOT_IMPLEMENTED;
+    extern const int LOGICAL_ERROR;
 }
 
 InterpreterRenameQuery::InterpreterRenameQuery(const ASTPtr & query_ptr_, ContextPtr context_)
@@ -75,9 +76,11 @@ BlockIO InterpreterRenameQuery::execute()
         table_guards[to];
     }
 
+    auto & database_catalog = DatabaseCatalog::instance();
+
     /// Must do it in consistent order.
     for (auto & table_guard : table_guards)
-        table_guard.second = DatabaseCatalog::instance().getDDLGuard(table_guard.first.database_name, table_guard.first.table_name);
+        table_guard.second = database_catalog.getDDLGuard(table_guard.first.database_name, table_guard.first.table_name, nullptr);
 
     getContext()->checkAccess(getRequiredAccess(rename.database ? RenameType::RenameDatabase : RenameType::RenameTable));
 
@@ -131,7 +134,7 @@ BlockIO InterpreterRenameQuery::executeToTables(const ASTRenameQuery & rename, c
             UniqueTableName to(elem.to_database_name, elem.to_table_name);
             ddl_guards[from]->releaseTableLock();
             ddl_guards[to]->releaseTableLock();
-            return database->tryEnqueueReplicatedDDL(query_ptr, getContext(), {});
+            return database->tryEnqueueReplicatedDDL(query_ptr, getContext(), {}, std::move(ddl_guards[from]));
         }
 
         StorageID from_table_id{elem.from_database_name, elem.from_table_name};
